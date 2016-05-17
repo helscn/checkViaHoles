@@ -3,6 +3,10 @@
 import sys,math,os,re
 from genBasic import *
 
+pitch=0.102
+maxWidth=700
+maxHeight=900
+
 class Tool:
     def __init__(self,f="",width=700,height=900,subAreaSize=0.5):
         self.area=[]
@@ -22,7 +26,7 @@ class Tool:
         for line in ofile:
             s = re.split('[\s]+', line.strip("\n"))
             if s[1] == "#P":
-                v={"name":s[0],
+                v={ "id":s[0],
                     "x":float(s[2]),
                     "y":float(s[3]),
                     "r":float(s[4][1:])/2000
@@ -31,10 +35,9 @@ class Tool:
                 if v["r"]>self.maxR:
                     self.maxR=v["r"]
         ofile.close()
-        print "data loaded."
 
     def checkPitch(self,pitch):
-        ngVias=[]
+        ngVias={}
         maxPitch=pitch+self.maxR*2
         for i in range(self.width):
             for j in range(self.height):
@@ -42,50 +45,46 @@ class Tool:
         for i in range(self.width):
             for j in range(self.height):
                 currentArea=self.area[i][j]
-                viasCount=len(currentArea)
                 for m,v1 in enumerate(currentArea):
                     n=m+1
                     D=v1["r"]+pitch
-                    while n<viasCount:
+                    while n<len(currentArea):
                         v2=currentArea[n]
-                        if abs(v2["y"]-v1["y"])<maxPitch and (v2["r"]+D)>math.sqrt((v1["x"]-v2["x"])**2+(v1["y"]-v2["y"])**2):
-                            ngVias.append(v1["name"])
-                            ngVias.append(v2["name"])
                         if v2["x"]-v1["x"]>maxPitch:
                             break
+                        elif (v2["r"]+D)>math.sqrt((v1["x"]-v2["x"])**2+(v1["y"]-v2["y"])**2):
+                            ngVias[v1["id"]]=v1
+                            ngVias[v2["id"]]=v2
                         n+=1
                     for v2 in self.area[i][j+1]:
-                        if abs(v2["y"]-v1["y"])<maxPitch and (v2["r"]+D)>math.sqrt((v1["x"]-v2["x"])**2+(v1["y"]-v2["y"])**2):
-                            ngVias.append(v1["name"])
-                            ngVias.append(v2["name"])
+                        if (v2["r"]+D)>math.sqrt((v1["x"]-v2["x"])**2+(v1["y"]-v2["y"])**2):
+                            ngVias[v1["id"]]=v1
+                            ngVias[v2["id"]]=v2
                     for v2 in self.area[i+1][j]:
-                        if abs(v2["x"]-v1["x"])>maxPitch:
+                        if v2["x"]-v1["x"]>maxPitch:
                             break
-                        else:
-                            if (v2["r"]+D)>math.sqrt((v1["x"]-v2["x"])**2+(v1["y"]-v2["y"])**2):
-                                ngVias.append(v1["name"])
-                                ngVias.append(v2["name"])
+                        elif (v2["r"]+D)>math.sqrt((v1["x"]-v2["x"])**2+(v1["y"]-v2["y"])**2):
+                            ngVias[v1["id"]]=v1
+                            ngVias[v2["id"]]=v2
                     for v2 in self.area[i+1][j+1]:
-                        if abs(v2["x"]-v1["x"])>maxPitch:
+                        if v2["x"]-v1["x"]>maxPitch:
                             break
-                        else:
-                            if (v2["r"]+D)>math.sqrt((v1["x"]-v2["x"])**2+(v1["y"]-v2["y"])**2):
-                                ngVias.append(v1["name"])
-                                ngVias.append(v2["name"])
+                        elif (v2["r"]+D)>math.sqrt((v1["x"]-v2["x"])**2+(v1["y"]-v2["y"])**2):
+                            ngVias[v1["id"]]=v1
+                            ngVias[v2["id"]]=v2
                     if j>0:
                         for v2 in self.area[i+1][j-1]:
-                            if abs(v2["x"]-v1["x"])>maxPitch:
+                            if v2["x"]-v1["x"]>maxPitch:
                                 break
-                            else:
-                                if (v2["r"]+D)>math.sqrt((v1["x"]-v2["x"])**2+(v1["y"]-v2["y"])**2):
-                                    ngVias.append(v1["name"])
-                                    ngVias.append(v2["name"])
-        return set(ngVias)
+                            elif (v2["r"]+D)>math.sqrt((v1["x"]-v2["x"])**2+(v1["y"]-v2["y"])**2):
+                                ngVias[v1["id"]]=v1
+                                ngVias[v2["id"]]=v2
+        return ngVias
 
-def gensOutput(vias,wkLayer="",prex="_xx"):
+def gensOutput(vias,wkLayer="",prex="_ng"):
     if len(vias)>0:
-        for v in vias:
-            COM('sel_layer_feat,operation=select,layer='+wkLayer+',index='+str(v[1:]))
+        for id in vias.keys():
+            COM('sel_layer_feat,operation=select,layer='+wkLayer+',index='+id[1:])
         if int(COM('get_select_count')[-1]) != 0:
             COM('sel_copy_other,dest=layer_name,target_layer='+wkLayer+prex+',invert=no,dx=0,dy=0,size=0,x_anchor=0,y_anchor=0,rotation=0,mirror=none')
         COM('zoom_back')
@@ -120,16 +119,11 @@ COM('display_layer,name='+wkLayer+',display=yes,number=1')
 COM('work_layer,name='+wkLayer)
 
 inputFile = '/tmp/gen_'+str(os.getpid())+'.'+os.environ['USER']+'.input'
-outputFile = '/tmp/gen_'+str(os.getpid())+'.'+os.environ['USER']+'.output'
-COM('info, out_file='+inputFile+',units=mm,args= -t layer -e '+os.environ['JOB']+'/'+os.environ['STEP']+'/'+wkLayer+' -d FEATURES -o break_sr+feat_index')
+#outputFile = '/tmp/gen_'+str(os.getpid())+'.'+os.environ['USER']+'.output'
+COM('info, out_file='+inputFile+',units=mm,args= -t layer -e '+os.environ['JOB']+'/'+os.environ['STEP']+'/'+wkLayer+' -d FEATURES -o index+break_sr')
 
 try:
-    pitch=float(sys.argv[1])
-except:
-    pitch=0.0508
-
-try:
-    viaHoles=Tool(inputFile,width=700,height=900,subAreaSize=0.5)
+    viaHoles=Tool(inputFile,width=maxWidth,height=maxHeight,subAreaSize=0.5)
 except:
     print "Openging source data file error!"
     sys.exit()
@@ -142,6 +136,8 @@ except:
 
 try:
     gensOutput(ngViaNames,wkLayer,"_ng")
+    #for v in ngViaNames.values():
+    #    print v["id"],v["x"],v["y"]
 except:
     print "Can't output data!"
 
