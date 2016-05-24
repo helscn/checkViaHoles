@@ -3,41 +3,58 @@
 import sys,math,os,re,genClasses
 from genBasic import *
 
-maxWidth=700
-maxHeight=900
-
 class Tool:
-    def __init__(self,f="",width=700,height=900,subAreaSize=0.5):
+    def __init__(self,f="",subAreaSize=0.5):
         self.area=[]
         self.tooling=[]
         self.maxR=0.0
+        self.minX=0.0
+        self.maxX=0.0
+        self.minY=0.0
+        self.maxY=0.0
+        self.width=0
+        self.height=0
         self.size=subAreaSize
-        self.width=int(width/subAreaSize)+1
-        self.height=int(height/subAreaSize)+1
-        for i in range(self.width+1):
-            self.area.append([])
-            for j in range(self.height+1):
-                self.area[i].append([])
         if f!="":
             self.load(f)
     
     def load(self,f):
         ofile=open(f,"r")
+        vias=[]
         for line in ofile:
             s = re.split('[\s]+', line.strip("\n"))
             if s[1] == "#P":
+                x=float(s[2])
+                y=float(s[3])
+                if x<self.minX:
+                    self.minX=x
+                elif x>self.maxX:
+                    self.maxX=x
+                if y<self.minY:
+                    self.minY=y
+                elif y>self.maxY:
+                    self.maxY=y
                 v={ "id":s[0],
-                    "x":float(s[2]),
-                    "y":float(s[3]),
+                    "x":x,
+                    "y":y,
                     "r":float(s[4][1:])/2000
                   }
+                if v["r"]>self.maxR:
+                    self.maxR=v["r"]
                 if "lsr_reg" in s[8]:
                     self.tooling.append(v)
                 else:
-                    self.area[int(v["x"]/self.size)][int(v["y"]/self.size)].append(v)
-                if v["r"]>self.maxR:
-                    self.maxR=v["r"]
+                    vias.append(v)
         ofile.close()
+        self.width=int((self.maxX-self.minX)/self.size)+1
+        self.height=int((self.maxY-self.minY)/self.size)+1
+        for i in range(self.width+1):
+            self.area.append([])
+            for j in range(self.height+1):
+                self.area[i].append([])
+        while len(vias)>0:
+            via=vias.pop()
+            self.area[int((via["x"]-self.minX)/self.size)][int((via["y"]-self.minY)/self.size)].append(via)
         for i in range(self.width):
             for j in range(self.height):
                 self.area[i][j].sort(key=lambda v:v["x"])
@@ -103,8 +120,8 @@ class Tool:
         ngVias={}
         maxPitch=pitch+self.maxR*2
         for v1 in self.tooling:
-            i=int(v1["x"]/self.size)-1
-            j=int(v1["y"]/self.size)-1
+            i=int((v1["x"]-self.minX)/self.size)-1
+            j=int((v1["y"]-self.minY)/self.size)-1
             D=v1["r"]+pitch
             for m in range(3):
                 for n in range(3):
@@ -136,12 +153,12 @@ class GenGUI:
         return result
 
     def inputBox(self,text="Input a value:",value="",button="CLOSE AND CONTINUE"):
-        s='WIN 400 300\nCLABEL '+button+'\nTEXT text '+text+'\nDTEXT text '+value+'\nEND\n'
+        s='WIN 400 300\nCLABEL {0}\nTEXT text {1}\nDTEXT text {2}\nEND\n'.format(button,str(text),value)
         return self.createWIN(s)["text"]
         
     def msgBox(self,text="message",button="CLOSE AND CONTINUE",color="000000",font="cbr14"):
-        s='WIN 400 300'+'\nCLABEL '+button+'\nFG '+color+'\nFONT '+font
-        for label in text.split('\n'):
+        s='WIN 400 300\nCLABEL {0}\nFG {1}\nFONT {2}'.format(button,color,font)
+        for label in str(text).split('\n'):
             s+='\nLABEL '+label
         s+='\nFG 000000\nFONT cbr14\nEND\n'
         self.createWIN(s)
@@ -231,9 +248,9 @@ inputFile = '/tmp/gen_'+str(os.getpid())+'.'+os.environ['USER']+'.input'
 COM('info, out_file='+inputFile+',units=mm,args= -t layer -e '+os.environ['JOB']+'/'+os.environ['STEP']+'/'+wkLayer+' -d FEATURES -o index+break_sr')
 
 try:
-    viaHoles=Tool(inputFile,width=maxWidth,height=maxHeight,subAreaSize=0.5)
+    viaHoles=Tool(inputFile,subAreaSize=0.5)
 except:
-    GenGUI().msgBox(text="Openging source data file error!",button="CLOSE")
+    myGUI.msgBox(text="Openging source data file error!",button="CLOSE")
     sys.exit()
 
 try:
@@ -251,7 +268,7 @@ try:
     ngVias.update(ngVias2)
     ngVias.update(ngVias3)
 except:
-    GenGUI().msgBox(text="Unexpected errors, please contact the programmer.",button="CLOSE")
+    myGUI.msgBox(text="Unexpected errors, please contact the programmer.",button="CLOSE")
     sys.exit()
 
 try:
@@ -261,15 +278,15 @@ try:
         COM('create_layer,layer='+wkLayer+'_ng,context=misc,type=drill,polarity=positive,ins_layer=')
         VON()
         gensOutput(ngVias,wkLayer,"_ng")
-        GenGUI().msgBox(text=str(len(ngVias))+' ng holes found in <'+wkLayer+'>!\nPlease refer to layer <'+wkLayer+'_ng>.',button='CLOSE',color='700000',font="cbr20")
+        myGUI.msgBox(text='{0} ng holes found in <{1}>!\nPlease refer to layer <{1}_ng>.'.format(str(len(ngVias)),wkLayer),button='CLOSE',color='700000',font="cbr20")
         
         #for v in ngVias.values():
         #    print v["id"],v["x"],v["y"]
     else:
-        GenGUI().msgBox(text="Checked ok!",button="CLOSE",color="003000",font="cbr24")
+        myGUI.msgBox(text="Checked ok!",button="CLOSE",color="003000",font="cbr24")
     COM('zoom_back')
 
 except:
-    GenGUI().msgBox(text="Can't output data!",button="CLOSE")
+    myGUI.msgBox(text="Can't output data!",button="CLOSE")
 
 sys.exit()

@@ -1,1 +1,1 @@
-Hello checkViaHoles
+用于在Genesis 2000中检查盲孔间间距小于指定值的盲孔，相对于Genesis中的自动检查功能，使用该脚本程序可以极大的缩短检查时间。
